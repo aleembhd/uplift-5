@@ -466,20 +466,54 @@
 
         function deleteRecord(phoneNumber) {
             const database = firebase.database();
+            const selectedTelecaller = localStorage.getItem('selectedTelecaller');
+            const telecallerName = selectedTelecaller.split('@')[0];
             
-            database.ref('calls').orderByChild('number').equalTo(phoneNumber).once('value', snapshot => {
-                snapshot.forEach(childSnapshot => {
-                    childSnapshot.ref.remove()
-                        .then(() => {
-                            console.log(`Record for ${phoneNumber} deleted successfully`);
-                            // Update the UI immediately after successful deletion
-                            updateUIAfterDeletion(phoneNumber);
-                        })
-                        .catch(error => {
-                            console.error('Error deleting record:', error);
-                        });
+            database.ref(telecallerName)
+                .orderByChild('number')
+                .equalTo(phoneNumber)
+                .once('value')
+                .then(snapshot => {
+                    const updates = {};
+                    snapshot.forEach(childSnapshot => {
+                        updates[childSnapshot.key] = null;
+                    });
+                    
+                    // Batch delete operation
+                    return database.ref(telecallerName).update(updates);
+                })
+                .then(() => {
+                    // Update local data immediately
+                    window.callData.details = window.callData.details.filter(
+                        call => call.number !== phoneNumber
+                    );
+
+                    // Update summary numbers instantly
+                    const summary = {
+                        total: window.callData.details.length,
+                        interested: window.callData.details.filter(call => call.status === 'Interested').length,
+                        notInterested: window.callData.details.filter(call => call.status === 'Not Interested').length,
+                        callback: window.callData.details.filter(call => call.status === 'Callback').length,
+                        unanswered: window.callData.details.filter(call => call.status === 'Unanswered').length
+                    };
+
+                    // Update UI elements immediately
+                    document.getElementById('totalCallsSummary').textContent = summary.total;
+                    document.getElementById('interestedCallsSummary').textContent = summary.interested;
+                    document.getElementById('notInterestedCallsSummary').textContent = summary.notInterested;
+                    document.getElementById('callBackCallsSummary').textContent = summary.callback;
+                    document.getElementById('unansweredCallsSummary').textContent = summary.unanswered;
+
+                    // Update progress bar
+                    updateProgressBar(summary.total);
+
+                    // Refresh the interested calls view
+                    showCallDetails('Interested');
+                })
+                .catch(error => {
+                    console.error('Error deleting record:', error);
+                    alert('Failed to delete call. Please try again.');
                 });
-            });
         }
 
         function updateUIAfterDeletion(phoneNumber) {
@@ -581,43 +615,63 @@
         function clearCallDetails(status) {
             if (confirm(`Are you sure you want to clear all ${status} call details?`)) {
                 const database = firebase.database();
-                const callsRef = database.ref('calls');
-
-                callsRef.once('value', snapshot => {
-                    const updates = {};
-                    snapshot.forEach(childSnapshot => {
-                        const call = childSnapshot.val();
-                        if (status === 'Total' || call.status === status) {
-                            updates[childSnapshot.key] = null;
-                        }
-                    });
-
-                    callsRef.update(updates)
-                        .then(() => {
-                            console.log(`${status} call details cleared successfully`);
-                            // Update the UI immediately after successful deletion
-                            updateUIAfterClearing(status);
-                        })
-                        .catch(error => {
-                            console.error('Error clearing call details:', error);
+                const selectedTelecaller = localStorage.getItem('selectedTelecaller');
+                const telecallerName = selectedTelecaller.split('@')[0];
+                
+                // Get reference to telecaller's data
+                const callsRef = database.ref(telecallerName);
+                
+                // Fetch and delete in one operation
+                callsRef.once('value')
+                    .then(snapshot => {
+                        const updates = {};
+                        snapshot.forEach(childSnapshot => {
+                            const call = childSnapshot.val();
+                            if (status === 'Total' || call.status === status) {
+                                updates[childSnapshot.key] = null;
+                            }
                         });
-                });
+
+                        // Batch delete operation
+                        return callsRef.update(updates);
+                    })
+                    .then(() => {
+                        // Immediately update UI
+                        if (status === 'Total') {
+                            window.callData.details = [];
+                        } else {
+                            window.callData.details = window.callData.details.filter(
+                                call => call.status !== status
+                            );
+                        }
+
+                        // Update summary numbers instantly
+                        const summary = {
+                            total: window.callData.details.length,
+                            interested: window.callData.details.filter(call => call.status === 'Interested').length,
+                            notInterested: window.callData.details.filter(call => call.status === 'Not Interested').length,
+                            callback: window.callData.details.filter(call => call.status === 'Callback').length,
+                            unanswered: window.callData.details.filter(call => call.status === 'Unanswered').length
+                        };
+
+                        // Update UI elements immediately
+                        document.getElementById('totalCallsSummary').textContent = summary.total;
+                        document.getElementById('interestedCallsSummary').textContent = summary.interested;
+                        document.getElementById('notInterestedCallsSummary').textContent = summary.notInterested;
+                        document.getElementById('callBackCallsSummary').textContent = summary.callback;
+                        document.getElementById('unansweredCallsSummary').textContent = summary.unanswered;
+
+                        // Update progress bar
+                        updateProgressBar(summary.total);
+
+                        // Refresh the call details view
+                        showCallDetails(status);
+                    })
+                    .catch(error => {
+                        console.error('Error clearing call details:', error);
+                        alert('Failed to clear calls. Please try again.');
+                    });
             }
-        }
-
-        function updateUIAfterClearing(status) {
-            // Remove the cleared calls from the callData.details array
-            if (status === 'Total') {
-                callData.details = [];
-            } else {
-                callData.details = callData.details.filter(call => call.status !== status);
-            }
-
-            // Update the summary numbers
-            updateSummaryNumbers();
-
-            // Refresh the call details view
-            showCallDetails(status);
         }
 
         document.addEventListener('DOMContentLoaded', function() {
@@ -764,6 +818,56 @@
             const totalCalls = parseInt(document.getElementById('totalCallsSummary').textContent);
             updateProgressBar(totalCalls);
         }
+
+        // Add the immediate data loader here
+        (function loadTelecallerData() {
+            // Get telecaller info from localStorage
+            const selectedTelecaller = localStorage.getItem('selectedTelecaller');
+            const telecallerName = selectedTelecaller.split('@')[0];
+            
+            // Reference to Firebase
+            const dbRef = firebase.database().ref(telecallerName);
+            
+            // Fetch data immediately using once()
+            dbRef.once('value')
+                .then(snapshot => {
+                    const calls = [];
+                    snapshot.forEach(childSnapshot => {
+                        calls.push({
+                            ...childSnapshot.val(),
+                            key: childSnapshot.key
+                        });
+                    });
+
+                    // Pre-calculate all summaries at once
+                    const summary = {
+                        total: calls.length,
+                        interested: calls.filter(call => call.status === 'Interested').length,
+                        notInterested: calls.filter(call => call.status === 'Not Interested').length,
+                        callback: calls.filter(call => call.status === 'Callback').length,
+                        unanswered: calls.filter(call => call.status === 'Unanswered').length
+                    };
+
+                    // Update UI elements immediately
+                    document.getElementById('totalCallsSummary').textContent = summary.total;
+                    document.getElementById('interestedCallsSummary').textContent = summary.interested;
+                    document.getElementById('notInterestedCallsSummary').textContent = summary.notInterested;
+                    document.getElementById('callBackCallsSummary').textContent = summary.callback;
+                    document.getElementById('unansweredCallsSummary').textContent = summary.unanswered;
+
+                    // Update progress bar
+                    updateProgressBar(summary.total);
+
+                    // Store data for other functions to use
+                    window.callData = {
+                        details: calls,
+                        summary: summary
+                    };
+                })
+                .catch(error => {
+                    console.error('Error loading telecaller data:', error);
+                });
+        })(); // Self-executing function
     </script>
 </body>
 </html>
