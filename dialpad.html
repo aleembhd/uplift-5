@@ -615,30 +615,30 @@
 
                 if (existingCall) {
                     if (existingCall.status === 'Interested') {
-                        // For "Interested" status, show the "Was The Call Lifted?" popup after 10 seconds
+                        // For "Interested" status, show the "Was The Call Lifted?" popup after 15 seconds
                         setTimeout(() => {
                             showLiftedPopup(existingCall);
-                        }, 10000); // Changed from 5000 to 10000 milliseconds
+                        }, 15000); // Changed from 10000 to 15000 milliseconds
                     } else if (existingCall.status === 'Not Interested' || existingCall.status === 'Unanswered' || existingCall.status === 'Callback') {
                         database.ref('calls').child(existingCall.key).remove()
                             .then(() => {
                                 console.log(`Removed existing call for ${number}`);
-                                // Show the regular popup after 10 seconds
+                                // Show the regular popup after 15 seconds
                                 setTimeout(() => {
                                     document.getElementById('popupOverlay').style.display = 'flex';
                                     savePopupState();
-                                }, 10000); // Changed from 5000 to 10000 milliseconds
+                                }, 15000); // Changed from 10000 to 15000 milliseconds
                             })
                             .catch((error) => {
                                 console.error('Error removing existing call:', error);
                             });
                     }
                 } else {
-                    // If no existing call, show the regular popup after 10 seconds
+                    // If no existing call, show the regular popup after 15 seconds
                     setTimeout(() => {
                         document.getElementById('popupOverlay').style.display = 'flex';
                         savePopupState();
-                    }, 10000); // Changed from 5000 to 10000 milliseconds
+                    }, 15000); // Changed from 10000 to 15000 milliseconds
                 }
             });
         }
