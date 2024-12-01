@@ -589,14 +589,61 @@
             }
         });
 
+        // Add this function right after Firebase initialization
+        async function checkAndDeleteExistingNumber(number) {
+            const telecallerEmail = localStorage.getItem('telecallerEmail');
+            const telecallerName = telecallerEmail.split('@')[0];
+            
+            try {
+                // Reference to telecaller's data
+                const dbRef = firebase.database().ref(telecallerName);
+                
+                // Check for existing number
+                const snapshot = await dbRef
+                    .orderByChild('number')
+                    .equalTo(number)
+                    .once('value');
+                
+                // If number exists, delete it
+                if (snapshot.exists()) {
+                    const updates = {};
+                    snapshot.forEach(childSnapshot => {
+                        updates[childSnapshot.key] = null;
+                    });
+                    
+                    // Delete existing entry
+                    await dbRef.update(updates);
+                    console.log(`Deleted existing entry for number: ${number}`);
+                }
+                
+                return true; // Continue with new call
+            } catch (error) {
+                console.error('Error checking/deleting existing number:', error);
+                return false;
+            }
+        }
+
+        // Modify the initiateCall function to use the new check
         function initiateCall() {
             if (phoneNumber.length === 10) {
-                window.location.href = `tel:${phoneNumber}`;
-                callStartTime = new Date();
-                savePhoneNumber(phoneNumber); // Save phone number when call is initiated
-                
-                // Check if the number exists in the database and handle accordingly
-                checkExistingCallAndUpdate(phoneNumber);
+                // First check and delete existing number
+                checkAndDeleteExistingNumber(phoneNumber)
+                    .then(success => {
+                        if (success) {
+                            window.location.href = `tel:${phoneNumber}`;
+                            callStartTime = new Date();
+                            savePhoneNumber(phoneNumber);
+                            checkExistingCallAndUpdate(phoneNumber);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error in number check:', error);
+                        // Still proceed with call even if check fails
+                        window.location.href = `tel:${phoneNumber}`;
+                        callStartTime = new Date();
+                        savePhoneNumber(phoneNumber);
+                        checkExistingCallAndUpdate(phoneNumber);
+                    });
             } else {
                 showErrorPopup();
             }
