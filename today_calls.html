@@ -335,6 +335,71 @@
       const database = firebase.database();
       const auth = firebase.auth();
 
+      // Add this right after Firebase initialization, before other scripts
+      function preloadTodayData() {
+        const selectedTelecaller = localStorage.getItem('selectedTelecaller');
+        const telecallerName = selectedTelecaller.split('@')[0];
+        
+        // Get today's date range
+        const today = new Date();
+        const startOfDay = today.setHours(0, 0, 0, 0);
+        const endOfDay = today.setHours(23, 59, 59, 999);
+        
+        // Reference to Firebase
+        const dbRef = firebase.database().ref(telecallerName);
+        
+        // Fetch today's data immediately using once()
+        dbRef.orderByChild('timestamp')
+            .startAt(startOfDay)
+            .endAt(endOfDay)
+            .once('value')
+            .then(snapshot => {
+                const todayCalls = [];
+                snapshot.forEach(childSnapshot => {
+                    const call = childSnapshot.val();
+                    if (call.telecallerEmail === selectedTelecaller) {
+                        todayCalls.push({
+                            ...call,
+                            key: childSnapshot.key
+                        });
+                    }
+                });
+
+                // Store data globally
+                window.todayCalls = todayCalls;
+
+                // Pre-calculate summary
+                const summary = {
+                    total: todayCalls.length,
+                    interested: todayCalls.filter(call => call.status === 'Interested').length,
+                    notInterested: todayCalls.filter(call => call.status === 'Not Interested').length,
+                    callback: todayCalls.filter(call => call.status === 'Callback').length,
+                    unanswered: todayCalls.filter(call => call.status === 'Unanswered').length
+                };
+
+                // Update UI immediately
+                document.getElementById('totalCallsSummary').textContent = summary.total;
+                document.getElementById('interestedCallsSummary').textContent = summary.interested;
+                document.getElementById('notInterestedCallsSummary').textContent = summary.notInterested;
+                document.getElementById('callBackCallsSummary').textContent = summary.callback;
+                document.getElementById('unansweredCallsSummary').textContent = summary.unanswered;
+
+                // Set current date display
+                document.getElementById('currentDate').textContent = today.toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+            })
+            .catch(error => {
+                console.error('Error loading today\'s data:', error);
+            });
+      }
+
+      // Call the preload function immediately
+      preloadTodayData();
+
       document.addEventListener("DOMContentLoaded", function () {
         // Function to get the telecaller email based on admin email
         function getTelecallerEmail(adminEmail) {
@@ -343,77 +408,70 @@
         }
 async function clearCallsByStatus(status) {
     try {
-        const user = auth.currentUser;
-        if (!user) {
-            alert('Please sign in to clear calls');
-            return;
-        }
-
-        const adminEmail = user.email;
-        const telecallerEmail = await getTelecallerEmail(adminEmail);
-        const telecallerPath = telecallerEmail.split('@')[0];  // Gets telecaller1, telecaller2, etc.
+        const selectedTelecaller = localStorage.getItem('selectedTelecaller');
+        const telecallerName = selectedTelecaller.split('@')[0];
         
-        // Get today's date
+        // Get today's date range
         const today = new Date();
         const startOfDay = today.setHours(0, 0, 0, 0);
         const endOfDay = today.setHours(23, 59, 59, 999);
         
-        // Reference to the telecaller's calls
-        const callsRef = database.ref(telecallerPath);
+        // Reference to Firebase
+        const dbRef = firebase.database().ref(telecallerName);
         
-        // Get today's calls
-        const snapshot = await callsRef
+        // Fetch and delete in one operation
+        const snapshot = await dbRef
             .orderByChild('timestamp')
             .startAt(startOfDay)
             .endAt(endOfDay)
             .once('value');
 
-        if (!snapshot.exists()) {
-            alert('No calls found to clear');
-            return;
-        }
-
         const updates = {};
         let hasUpdates = false;
 
-        // Mark calls for deletion based on status
-        snapshot.forEach((childSnapshot) => {
+        snapshot.forEach(childSnapshot => {
             const call = childSnapshot.val();
-            if (call.telecallerEmail === telecallerEmail && 
-                (status === 'Total' || call.status === status)) {
+            if (call.status === status || status === 'Total') {
                 updates[childSnapshot.key] = null;
                 hasUpdates = true;
             }
         });
 
-        if (hasUpdates) {
-            // Perform the deletion
-            await callsRef.update(updates);
-            console.log('Successfully deleted calls');
-            
-            // Update the UI with remaining calls
-            const todayCalls = [];
-            const newSnapshot = await callsRef
-                .orderByChild('timestamp')
-                .startAt(startOfDay)
-                .endAt(endOfDay)
-                .once('value');
-            
-            newSnapshot.forEach((childSnapshot) => {
-                const call = childSnapshot.val();
-                if (call && call.telecallerEmail === telecallerEmail) {
-                    todayCalls.push(call);
-                }
-            });
-            
-            // Update the UI
-            window.todayCalls = todayCalls;
-            updateTodayDashboard(todayCalls);
-            showCallDetails(status);
-            alert(`Successfully cleared ${status} calls`);
-        } else {
+        if (!hasUpdates) {
             alert(`No ${status} calls found to clear`);
+            return;
         }
+
+        // Update local data immediately
+        if (status === 'Total') {
+            window.todayCalls = [];
+        } else {
+            window.todayCalls = window.todayCalls.filter(call => call.status !== status);
+        }
+
+        // Update UI instantly
+        const summary = {
+            total: window.todayCalls.length,
+            interested: window.todayCalls.filter(call => call.status === 'Interested').length,
+            notInterested: window.todayCalls.filter(call => call.status === 'Not Interested').length,
+            callback: window.todayCalls.filter(call => call.status === 'Callback').length,
+            unanswered: window.todayCalls.filter(call => call.status === 'Unanswered').length
+        };
+
+        // Update UI elements immediately
+        document.getElementById('totalCallsSummary').textContent = summary.total;
+        document.getElementById('interestedCallsSummary').textContent = summary.interested;
+        document.getElementById('notInterestedCallsSummary').textContent = summary.notInterested;
+        document.getElementById('callBackCallsSummary').textContent = summary.callback;
+        document.getElementById('unansweredCallsSummary').textContent = summary.unanswered;
+
+        // Refresh the call details view
+        showCallDetails(status);
+
+        // Perform Firebase deletion in background
+        await dbRef.update(updates);
+        console.log(`Successfully cleared ${status} calls`);
+
     } catch (error) {
         console.error('Error clearing calls:', error);
         alert('Failed to clear calls. Please try again.');
@@ -582,19 +640,16 @@ document.querySelector(".call-details-card h2").textContent = `${status} Call De
 // Setup clear button (keep only this one implementation)
 const clearAllBtn = document.getElementById('clearAllBtn');
 if (clearAllBtn) {
-    // Remove any existing listeners
-    clearAllBtn.replaceWith(clearAllBtn.cloneNode(true));
-    
-    // Get the fresh reference
-    const newClearBtn = document.getElementById('clearAllBtn');
-    
-    // Show the button and set up the new listener
-    newClearBtn.style.display = 'block';
-    newClearBtn.addEventListener('click', () => {
-        if (confirm(`Are you sure you want to clear all ${status} calls?`)) {
-            clearCallsByStatus(status);
-        }
-    });
+    if (status === 'Interested') {
+        clearAllBtn.style.display = 'none';  // Hide clear button for Interested calls
+    } else {
+        clearAllBtn.style.display = 'block'; // Show for other statuses
+        clearAllBtn.addEventListener('click', () => {
+            if (confirm(`Are you sure you want to clear all ${status} calls?`)) {
+                clearCallsByStatus(status);
+            }
+        });
+    }
 }
           // Show/hide clear button based on status
           
@@ -620,6 +675,17 @@ if (clearAllBtn) {
               const phoneNumber = this.getAttribute("data-number");
               window.open(`tel:${phoneNumber}`, "_self");
             });
+          });
+
+          // Add event listeners for dustbin icons (only in Interested calls)
+          const dustbinIcons = document.querySelectorAll('.dustbin-icon');
+          dustbinIcons.forEach(icon => {
+              icon.addEventListener('click', function() {
+                  const phoneNumber = this.getAttribute('data-number');
+                  if (confirm(`Are you sure you want to delete the record for ${phoneNumber}?`)) {
+                      deleteInterestedCall(phoneNumber);  // Use the optimized delete function
+                  }
+              });
           });
         }
 
@@ -1094,6 +1160,54 @@ if (clearAllBtn) {
               });
             }
           });
+        }
+
+        // Optimize Dustbin icon functionality for Interested calls
+        async function deleteInterestedCall(phoneNumber) {
+            try {
+                const selectedTelecaller = localStorage.getItem('selectedTelecaller');
+                const telecallerName = selectedTelecaller.split('@')[0];
+                
+                // Update local data immediately
+                window.todayCalls = window.todayCalls.filter(call => call.number !== phoneNumber);
+
+                // Update UI instantly
+                const summary = {
+                    total: window.todayCalls.length,
+                    interested: window.todayCalls.filter(call => call.status === 'Interested').length,
+                    notInterested: window.todayCalls.filter(call => call.status === 'Not Interested').length,
+                    callback: window.todayCalls.filter(call => call.status === 'Callback').length,
+                    unanswered: window.todayCalls.filter(call => call.status === 'Unanswered').length
+                };
+
+                // Update UI elements
+                document.getElementById('totalCallsSummary').textContent = summary.total;
+                document.getElementById('interestedCallsSummary').textContent = summary.interested;
+                document.getElementById('notInterestedCallsSummary').textContent = summary.notInterested;
+                document.getElementById('callBackCallsSummary').textContent = summary.callback;
+                document.getElementById('unansweredCallsSummary').textContent = summary.unanswered;
+
+                // Refresh the interested calls view
+                showCallDetails('Interested');
+
+                // Delete from Firebase in background
+                const dbRef = firebase.database().ref(telecallerName);
+                const snapshot = await dbRef
+                    .orderByChild('number')
+                    .equalTo(phoneNumber)
+                    .once('value');
+
+                const updates = {};
+                snapshot.forEach(childSnapshot => {
+                    updates[childSnapshot.key] = null;
+                });
+
+                await dbRef.update(updates);
+
+            } catch (error) {
+                console.error('Error deleting interested call:', error);
+                alert('Failed to delete call. Please try again.');
+            }
         }
       });
     </script>
