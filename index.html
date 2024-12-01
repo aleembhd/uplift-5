@@ -940,7 +940,6 @@
                                             <img src="images/editicon.png" alt="Edit" style="width: 33px; height: 33px;">
                                         </span>
                                     </div>
-                                    <!--
                                     <div class="manager-button-container">
                                         <button id="admin3Btn" class="manager-btn">
                                             <span class="button-number">3.</span>
@@ -1057,27 +1056,46 @@
                         // Update the handleAdminClick function
                         const handleAdminClick = async (adminNumber) => {
                             try {
-                                // Format the admin number correctly for authentication
+                                // Format admin number and prepare emails
                                 const formattedAdminNumber = adminNumber.toString();
-                                const email = `admin${formattedAdminNumber}@gmail.com`;
-                                console.log('Attempting login with:', email); // Debug log
+                                const adminEmail = `admin${formattedAdminNumber}@gmail.com`;
+                                const telecallerEmail = `telecaller${formattedAdminNumber}@gmail.com`;
                                 
-                                const userCredential = await firebase.auth().signInWithEmailAndPassword(
-                                    email, 
-                                    'admin@123'
-                                );
-                                
-                                localStorage.setItem('selectedTelecaller', `telecaller${formattedAdminNumber}@gmail.com`);
+                                // 1. Set all necessary localStorage values first
+                                localStorage.setItem('selectedTelecaller', telecallerEmail);
+                                localStorage.setItem('adminEmail', adminEmail);
+                                localStorage.setItem('isManager', 'true');
                                 localStorage.setItem('selectedManagerName', document.getElementById(`${adminNumber === '1' ? 'ramesh' : adminNumber === '2' ? 'suresh' : 'admin' + adminNumber}Name`).textContent);
-                                handleSuccessfulLogin(email, 'manager');
-                                managerModal.remove();
+                                
+                                // 2. Open dashboard immediately
+                                const dashboardWindow = window.open('maindashboard.html', '_blank');
+                                
+                                // 3. Authenticate in background with proper error handling
+                                try {
+                                    await firebase.auth().signInWithEmailAndPassword(adminEmail, 'admin@123');
+                                    console.log('Authentication successful for:', adminEmail);
+                                    telecallerModal.remove();
+                                } catch (authError) {
+                                    console.error('Detailed auth error:', authError);
+                                    
+                                    // Only close dashboard if it's a critical auth error
+                                    if (authError.code === 'auth/user-not-found' || 
+                                        authError.code === 'auth/wrong-password' ||
+                                        authError.code === 'auth/invalid-email') {
+                                        dashboardWindow.close();
+                                        alert("Authentication failed. Please try again.");
+                                    } else {
+                                        // For other errors, let the dashboard stay open
+                                        console.warn('Non-critical auth error:', authError.message);
+                                    }
+                                }
                             } catch (error) {
-                                console.error('Authentication error:', error); // Debug log
-                                alert("Authentication failed: " + error.message);
+                                console.error('Error in handleAdminClick:', error);
+                                alert("An error occurred. Please try again.");
                             }
                         };
 
-                        // Update the click handlers for buttons
+                        // The click handlers remain the same
                         document.getElementById('rameshBtn').addEventListener('click', () => handleAdminClick('1'));
                         document.getElementById('sureshBtn').addEventListener('click', () => handleAdminClick('2'));
                         for(let i = 3; i <= 10; i++) {
@@ -1115,7 +1133,6 @@
                                             <span>${names.telecallerTwo || 'Telecaller 2'}</span>
                                         </button>
                                     </div>
-                                    <!-- Commented buttons
                                     <div class="manager-button-container">
                                         <button id="telecaller3Btn" class="manager-btn">
                                             <span class="button-number">3.</span>
@@ -1180,85 +1197,42 @@
 
                         // Existing button handlers remain unchanged
                         document.getElementById('telecaller1Btn').addEventListener('click', () => {
-                            // Set localStorage and open new window immediately
+                            // Set telecaller identity first
                             localStorage.setItem('telecallerEmail', 'telecaller1@gmail.com');
-                            const newWindow = window.open('dialpad.html', '_blank');
                             
-                            // Perform authentication in the background
+                            // Open dialpad immediately
+                            const dialpadWindow = window.open('dialpad.html', '_blank');
+                            
+                            // Authenticate in background
                             firebase.auth().signInWithEmailAndPassword('telecaller1@gmail.com', 'telecaller@123')
                                 .then(() => {
                                     telecallerModal.remove();
                                 })
                                 .catch(error => {
-                                    newWindow.close();
-                                    alert("Connection failed. Please try again.");
+                                    // Close dialpad if auth fails
+                                    dialpadWindow.close();
+                                    alert("Authentication failed. Please try again.");
                                 });
                         });
 
-                        document.getElementById('telecaller2Btn').addEventListener('click', () => {
-                            // Set localStorage and open new window immediately
-                            localStorage.setItem('telecallerEmail', 'telecaller2@gmail.com');
-                            const newWindow = window.open('dialpad.html', '_blank');
-                            
-                            // Perform authentication in the background
-                            firebase.auth().signInWithEmailAndPassword('telecaller2@gmail.com', 'telecaller@123')
-                                .then(() => {
-                                    telecallerModal.remove();
-                                })
-                                .catch(error => {
-                                    newWindow.close();
-                                    alert("Connection failed. Please try again.");
-                                });
-                        });
-
-                        // Add new button handlers for telecaller3 and telecaller4
-                        document.getElementById('telecaller3Btn').addEventListener('click', () => {
-                            // Set localStorage and open new window immediately
-                            localStorage.setItem('telecallerEmail', 'telecaller3@gmail.com');
-                            const newWindow = window.open('dialpad.html', '_blank');
-                            
-                            // Perform authentication in the background
-                            firebase.auth().signInWithEmailAndPassword('telecaller3@gmail.com', 'telecaller@123')
-                                .then(() => {
-                                    telecallerModal.remove();
-                                })
-                                .catch(error => {
-                                    newWindow.close();
-                                    alert("Connection failed. Please try again.");
-                                });
-                        });
-
-                        document.getElementById('telecaller4Btn').addEventListener('click', () => {
-                            // Set localStorage and open new window immediately
-                            localStorage.setItem('telecallerEmail', 'telecaller4@gmail.com');
-                            const newWindow = window.open('dialpad.html', '_blank');
-                            
-                            // Perform authentication in the background
-                            firebase.auth().signInWithEmailAndPassword('telecaller4@gmail.com', 'telecaller@123')
-                                .then(() => {
-                                    telecallerModal.remove();
-                                })
-                                .catch(error => {
-                                    newWindow.close();
-                                    alert("Connection failed. Please try again.");
-                                });
-                        });
-
-                        // Add handlers for new buttons
-                        for(let i = 5; i <= 10; i++) {
+                        // For telecaller2 through telecaller10, use this more efficient loop
+                        for(let i = 2; i <= 10; i++) {
                             document.getElementById(`telecaller${i}Btn`).addEventListener('click', () => {
-                                // Set localStorage and open new window immediately
+                                // Set telecaller identity first
                                 localStorage.setItem('telecallerEmail', `telecaller${i}@gmail.com`);
-                                const newWindow = window.open('dialpad.html', '_blank');
                                 
-                                // Perform authentication in the background
+                                // Open dialpad immediately
+                                const dialpadWindow = window.open('dialpad.html', '_blank');
+                                
+                                // Authenticate in background
                                 firebase.auth().signInWithEmailAndPassword(`telecaller${i}@gmail.com`, 'telecaller@123')
                                     .then(() => {
                                         telecallerModal.remove();
                                     })
                                     .catch(error => {
-                                        newWindow.close();
-                                        alert("Connection failed. Please try again.");
+                                        // Close dialpad if auth fails
+                                        dialpadWindow.close();
+                                        alert("Authentication failed. Please try again.");
                                     });
                             });
                         }
